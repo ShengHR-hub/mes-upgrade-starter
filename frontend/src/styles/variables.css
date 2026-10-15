@@ -1,0 +1,51 @@
+/**
+ * 设计令牌：颜色、间距、字号、状态色。
+ * 视觉方向：清晰、克制的制造业管理界面，以信息可读性为主。
+ */
+
+:root {
+  /* 间距 */
+  --mes-space-1: 4px;
+  --mes-space-2: 8px;
+  --mes-space-3: 12px;
+  --mes-space-4: 16px;
+  --mes-space-5: 24px;
+  --mes-space-6: 32px;
+
+  /* 字号 */
+  --mes-font-size-xs: 12px;
+  --mes-font-size-sm: 13px;
+  --mes-font-size-md: 14px;
+  --mes-font-size-lg: 16px;
+  --mes-font-size-xl: 20px;
+  --mes-font-size-title: 22px;
+
+  --mes-font-mono: ui-monospace, SFMono-Regular, Consolas, 'Liberation Mono', Menlo, monospace;
+
+  /* 文本 */
+  --mes-text-primary: #1f2329;
+  --mes-text-secondary: #5b6270;
+  --mes-text-muted: #8a9099;
+
+  /* 面 */
+  --mes-bg-page: #f4f5f7;
+  --mes-bg-container: #ffffff;
+  --mes-bg-aside: #ffffff;
+  --mes-fill-light: #f0f1f3;
+  --mes-border-color: #dcdfe6;
+  --mes-border-color-light: #e6e8eb;
+
+  /* 状态 */
+  --mes-color-success: #2e9e5b;
+  --mes-color-warning: #d9891b;
+  --mes-color-danger: #d33b3b;
+  --mes-color-info: #6b7280;
+
+  /* 布局尺寸 */
+  --mes-aside-width: 220px;
+  --mes-aside-collapsed-width: 64px;
+  --mes-header-height: auto;
+  --mes-radius: 6px;
+
+  --mes-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.06);
+}

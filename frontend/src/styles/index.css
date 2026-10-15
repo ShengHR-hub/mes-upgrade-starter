@@ -1,0 +1,126 @@
+/**
+ * 全局样式：基础重置、公共状态块、表格横向滚动容器、页面标题区。
+ * 与 `variables.css` 的令牌配合使用；媒体查询断点与
+ * `composables/useViewport.ts` 的 NARROW_BREAKPOINT_PX (768) 保持一致。
+ */
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  font-family:
+    system-ui,
+    -apple-system,
+    'Segoe UI',
+    'PingFang SC',
+    'Microsoft YaHei',
+    sans-serif;
+  font-size: var(--mes-font-size-md);
+  color: var(--mes-text-primary);
+  background: var(--mes-bg-page);
+  -webkit-font-smoothing: antialiased;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+/* ---------- 公共状态块（加载 / 空 / 错误 / 无权限 / 未实现） ---------- */
+
+.state-block {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--mes-space-2);
+  padding: var(--mes-space-5);
+  text-align: center;
+  color: var(--mes-text-secondary);
+}
+
+.state-block__icon {
+  font-size: 28px;
+  color: var(--mes-text-muted);
+}
+
+.state-block__icon--error {
+  color: var(--mes-color-danger);
+}
+
+.state-block__icon--warning {
+  color: var(--mes-color-warning);
+}
+
+.state-block__text {
+  margin: 0;
+  font-size: var(--mes-font-size-lg);
+  font-weight: 600;
+  color: var(--mes-text-primary);
+}
+
+.state-block__hint {
+  margin: 0;
+  max-width: 720px;
+  line-height: 1.6;
+  color: var(--mes-text-secondary);
+  font-size: var(--mes-font-size-sm);
+}
+
+.state-block__hint--muted {
+  color: var(--mes-text-muted);
+}
+
+.state-block__actions {
+  margin-top: var(--mes-space-2);
+}
+
+/* ---------- 页面标题区 ---------- */
+
+.page-header {
+  margin-bottom: var(--mes-space-4);
+}
+
+.page-header__title {
+  margin: 0;
+  font-size: var(--mes-font-size-title);
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.page-header__subtitle {
+  margin: var(--mes-space-1) 0 0;
+  color: var(--mes-text-secondary);
+  font-size: var(--mes-font-size-sm);
+  line-height: 1.6;
+}
+
+/* ---------- 表格容器：小屏预留横向滚动 ---------- */
+
+.table-scroll {
+  width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.table-scroll > table,
+.table-scroll .el-table {
+  min-width: 640px;
+}
+
+/* ---------- 卡片区 ---------- */
+
+.mes-card {
+  background: var(--mes-bg-container);
+  border: 1px solid var(--mes-border-color-light);
+  border-radius: var(--mes-radius);
+  padding: var(--mes-space-4);
+}

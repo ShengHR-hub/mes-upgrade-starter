@@ -1,0 +1,268 @@
+-- ============================================================
+-- 升级版 MES 数据库表结构（MySQL 8）
+-- 主数据来自精创电子 6 份企业数据文件，业务表支撑升级功能
+-- ============================================================
+CREATE DATABASE IF NOT EXISTS smart_mes
+  DEFAULT CHARACTER SET utf8mb4 DEFAULT COLLATE utf8mb4_unicode_ci;
+USE smart_mes;
+
+-- ---------------- 主数据：产品 ----------------
+CREATE TABLE product (
+  code          VARCHAR(32)  PRIMARY KEY COMMENT '产品编号，如 JC-PLC-2001',
+  name          VARCHAR(64)  NOT NULL COMMENT '产品名称',
+  line          VARCHAR(32)  NOT NULL COMMENT '产品线：工业控制板卡/物联网模组/智能传感器',
+  monthly_output INT         DEFAULT 0 COMMENT '月产量',
+  unit          VARCHAR(8)   DEFAULT '片' COMMENT '单位：片/只',
+  std_hours     DECIMAL(6,2) DEFAULT 0 COMMENT '标准工时(小时/单位)',
+  remark        VARCHAR(128) DEFAULT NULL,
+  created_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+) COMMENT='产品主数据（来源：01_产品清单.xlsx，15条）';
+
+-- ---------------- 主数据：设备 ----------------
+CREATE TABLE device (
+  code          VARCHAR(32)  PRIMARY KEY COMMENT '设备编号，如 EQP-SMT-001',
+  name          VARCHAR(64)  NOT NULL COMMENT '设备名称',
+  workshop      VARCHAR(32)  NOT NULL COMMENT '所在车间',
+  prod_line     VARCHAR(32)  DEFAULT NULL COMMENT '所在产线',
+  status        VARCHAR(16)  NOT NULL DEFAULT '运行中' COMMENT '运行中/待机/维修中/停机',
+  purchase_year YEAR         DEFAULT NULL,
+  supplier      VARCHAR(64)  DEFAULT NULL,
+  remark        VARCHAR(128) DEFAULT NULL,
+  updated_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) COMMENT='设备主数据（来源：02_设备清单.xlsx，13条）';
+
+-- ---------------- 主数据：物料 ----------------
+CREATE TABLE material (
+  code          VARCHAR(32)  PRIMARY KEY COMMENT '物料编号',
+  name          VARCHAR(64)  NOT NULL COMMENT '物料名称',
+  spec          VARCHAR(128) DEFAULT NULL COMMENT '规格型号',
+  category      VARCHAR(32)  DEFAULT NULL COMMENT '物料类别：PCB/芯片/电阻电容等',
+  unit          VARCHAR(8)   DEFAULT NULL,
+  safety_stock  INT          DEFAULT 0 COMMENT '安全库存',
+  supplier      VARCHAR(64)  DEFAULT NULL,
+  remark        VARCHAR(128) DEFAULT NULL
+) COMMENT='物料主数据（来源：06_物料清单.xlsx，24条）';
+
+-- ---------------- 主数据：BOM ----------------
+CREATE TABLE bom (
+  id            BIGINT AUTO_INCREMENT PRIMARY KEY,
+  product_code  VARCHAR(32) NOT NULL COMMENT '产品编号',
+  level         INT NOT NULL DEFAULT 1 COMMENT 'BOM层级',
+  material_code VARCHAR(32) NOT NULL COMMENT '物料编号',
+  qty           DECIMAL(10,2) NOT NULL COMMENT '单位用量',
+  unit          VARCHAR(8) DEFAULT NULL,
+  UNIQUE KEY uk_bom (product_code, material_code),
+  KEY idx_bom_product (product_code),
+  CONSTRAINT fk_bom_product  FOREIGN KEY (product_code)  REFERENCES product(code),
+  CONSTRAINT fk_bom_material FOREIGN KEY (material_code) REFERENCES material(code)
+) COMMENT='BOM清单（来源：03_BOM清单.xlsx，2个产品共28行物料行，不含2行成品行）';
+
+-- ---------------- 主数据：工艺路线 ----------------
+CREATE TABLE process_route (
+  id            BIGINT AUTO_INCREMENT PRIMARY KEY,
+  product_code  VARCHAR(32) NOT NULL COMMENT '产品编号',
+  seq           INT NOT NULL COMMENT '工序序号',
+  step_name     VARCHAR(32) NOT NULL COMMENT '工序名称',
+  workshop      VARCHAR(32) DEFAULT NULL COMMENT '所在车间',
+  prod_line     VARCHAR(32) DEFAULT NULL COMMENT '所在产线',
+  std_minutes   DECIMAL(8,2) DEFAULT 0 COMMENT '标准工时(分钟)',
+  key_device    VARCHAR(64) DEFAULT NULL COMMENT '关键设备',
+  qc_point      VARCHAR(128) DEFAULT NULL COMMENT '质量管控点',
+  UNIQUE KEY uk_route (product_code, seq),
+  CONSTRAINT fk_route_product FOREIGN KEY (product_code) REFERENCES product(code)
+) COMMENT='工艺路线（来源：04_工艺路线.xlsx，15条总览+10道工序详情）';
+
+-- ---------------- 主数据：用户 ----------------
+CREATE TABLE sys_user (
+  id            BIGINT AUTO_INCREMENT PRIMARY KEY,
+  username      VARCHAR(32) NOT NULL UNIQUE COMMENT '登录用户名',
+  name          VARCHAR(32) NOT NULL COMMENT '姓名',
+  dept          VARCHAR(32) DEFAULT NULL COMMENT '所属部门',
+  post          VARCHAR(32) DEFAULT NULL COMMENT '岗位',
+  role          VARCHAR(16) NOT NULL DEFAULT 'operator'
+                COMMENT 'admin=管理员/manager=管理者/operator=操作员',
+  phone         VARCHAR(16) DEFAULT NULL,
+  password_hash VARCHAR(128) NOT NULL COMMENT '初始密码统一哈希，首登强制修改',
+  enabled       TINYINT(1) NOT NULL DEFAULT 1,
+  created_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+) COMMENT='人员账号（来源：05_人员账号.xlsx，23条）';
+
+-- ============================================================
+-- 业务表：支撑升级功能
+-- ============================================================
+
+-- 销售订单（痛点1的源头）
+CREATE TABLE sale_order (
+  id            BIGINT AUTO_INCREMENT PRIMARY KEY,
+  code          VARCHAR(32) NOT NULL UNIQUE COMMENT '订单编号',
+  product_code  VARCHAR(32) NOT NULL,
+  qty           INT NOT NULL,
+  due_date      DATE NOT NULL COMMENT '交期',
+  status        VARCHAR(16) NOT NULL DEFAULT '待确认'
+                COMMENT '待确认/已确认/生产中/已完成/已延期',
+  created_by    BIGINT DEFAULT NULL,
+  created_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT fk_so_product FOREIGN KEY (product_code) REFERENCES product(code)
+) COMMENT='销售订单';
+
+-- 生产工单（状态机流转）
+CREATE TABLE work_order (
+  id            BIGINT AUTO_INCREMENT PRIMARY KEY,
+  code          VARCHAR(32) NOT NULL UNIQUE COMMENT '工单编号',
+  sale_order_id BIGINT DEFAULT NULL,
+  product_code  VARCHAR(32) NOT NULL,
+  qty           INT NOT NULL COMMENT '计划数量',
+  done_qty      INT NOT NULL DEFAULT 0 COMMENT '完工数量',
+  status        VARCHAR(16) NOT NULL DEFAULT '待启动'
+                COMMENT '待启动/在产/暂停/完工/关闭',
+  plan_start    DATE DEFAULT NULL,
+  plan_end      DATE DEFAULT NULL,
+  created_by    BIGINT DEFAULT NULL,
+  created_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT fk_wo_product FOREIGN KEY (product_code) REFERENCES product(code),
+  CONSTRAINT fk_wo_sale    FOREIGN KEY (sale_order_id) REFERENCES sale_order(id)
+) COMMENT='生产工单';
+
+-- 工序任务（工单按工艺路线自动分解 + APS排产结果）
+CREATE TABLE work_task (
+  id            BIGINT AUTO_INCREMENT PRIMARY KEY,
+  work_order_id BIGINT NOT NULL,
+  seq           INT NOT NULL COMMENT '工序序号',
+  step_name     VARCHAR(32) NOT NULL,
+  workshop      VARCHAR(32) DEFAULT NULL,
+  prod_line     VARCHAR(32) DEFAULT NULL,
+  device_code   VARCHAR(32) DEFAULT NULL COMMENT '分配设备',
+  operator_id   BIGINT DEFAULT NULL COMMENT '分配操作员',
+  plan_qty      INT NOT NULL DEFAULT 0,
+  good_qty      INT NOT NULL DEFAULT 0,
+  bad_qty       INT NOT NULL DEFAULT 0,
+  status        VARCHAR(16) NOT NULL DEFAULT '待启动'
+                COMMENT '待启动/在产/完工',
+  plan_start    DATETIME DEFAULT NULL COMMENT 'APS排产：计划开始',
+  plan_end      DATETIME DEFAULT NULL COMMENT 'APS排产：计划结束',
+  started_at    DATETIME DEFAULT NULL,
+  finished_at   DATETIME DEFAULT NULL,
+  CONSTRAINT fk_task_wo FOREIGN KEY (work_order_id) REFERENCES work_order(id)
+    ON DELETE CASCADE,
+  KEY idx_task_wo (work_order_id, seq)
+) COMMENT='工序任务';
+
+-- 工序报工
+CREATE TABLE report (
+  id            BIGINT AUTO_INCREMENT PRIMARY KEY,
+  task_id       BIGINT NOT NULL,
+  user_id       BIGINT NOT NULL COMMENT '报工操作员',
+  good_qty      INT NOT NULL DEFAULT 0,
+  bad_qty       INT NOT NULL DEFAULT 0,
+  reported_at   TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT fk_report_task FOREIGN KEY (task_id) REFERENCES work_task(id)
+    ON DELETE CASCADE
+) COMMENT='工序报工记录';
+
+-- 检验记录
+CREATE TABLE qc_record (
+  id            BIGINT AUTO_INCREMENT PRIMARY KEY,
+  work_order_id BIGINT NOT NULL,
+  task_id       BIGINT DEFAULT NULL COMMENT '关联工序（过程检）',
+  result        VARCHAR(8) NOT NULL COMMENT 'OK/NG',
+  check_qty     INT NOT NULL DEFAULT 0,
+  ng_qty        INT NOT NULL DEFAULT 0,
+  inspector_id  BIGINT DEFAULT NULL,
+  checked_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  remark        VARCHAR(256) DEFAULT NULL,
+  CONSTRAINT fk_qc_wo FOREIGN KEY (work_order_id) REFERENCES work_order(id)
+) COMMENT='质量检验记录';
+
+-- 不良品记录（SPC分析源）
+CREATE TABLE defect (
+  id            BIGINT AUTO_INCREMENT PRIMARY KEY,
+  qc_record_id  BIGINT NOT NULL,
+  defect_type   VARCHAR(32) NOT NULL COMMENT '不良类型：虚焊/错件/划伤…',
+  qty           INT NOT NULL DEFAULT 0,
+  step_name     VARCHAR(32) DEFAULT NULL COMMENT '发现工序',
+  description   VARCHAR(256) DEFAULT NULL,
+  created_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT fk_defect_qc FOREIGN KEY (qc_record_id) REFERENCES qc_record(id)
+    ON DELETE CASCADE
+) COMMENT='不良品记录';
+
+-- 物料批次（批次追溯）
+CREATE TABLE material_batch (
+  id            BIGINT AUTO_INCREMENT PRIMARY KEY,
+  batch_no      VARCHAR(64) NOT NULL UNIQUE COMMENT '批次号',
+  material_code VARCHAR(32) NOT NULL,
+  qty           INT NOT NULL,
+  inbound_at    DATE NOT NULL COMMENT '入库日期',
+  supplier      VARCHAR(64) DEFAULT NULL,
+  CONSTRAINT fk_batch_material FOREIGN KEY (material_code) REFERENCES material(code)
+) COMMENT='物料批次';
+
+-- SN全链路追溯
+CREATE TABLE sn_trace (
+  id            BIGINT AUTO_INCREMENT PRIMARY KEY,
+  sn            VARCHAR(64) NOT NULL UNIQUE COMMENT '产品序列号',
+  work_order_id BIGINT NOT NULL,
+  product_code  VARCHAR(32) NOT NULL,
+  task_id       BIGINT DEFAULT NULL COMMENT '当前/完工工序',
+  operator_id   BIGINT DEFAULT NULL,
+  device_code   VARCHAR(32) DEFAULT NULL,
+  batch_id      BIGINT DEFAULT NULL COMMENT '所用物料批次',
+  qc_result     VARCHAR(8) DEFAULT NULL COMMENT 'OK/NG',
+  produced_at   TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  KEY idx_sn_wo (work_order_id),
+  CONSTRAINT fk_sn_wo FOREIGN KEY (work_order_id) REFERENCES work_order(id)
+) COMMENT='SN全链路追溯';
+
+-- 设备状态变更日志（OEE计算源）
+CREATE TABLE equipment_log (
+  id            BIGINT AUTO_INCREMENT PRIMARY KEY,
+  device_code   VARCHAR(32) NOT NULL,
+  old_status    VARCHAR(16) DEFAULT NULL,
+  new_status    VARCHAR(16) NOT NULL COMMENT '运行中/待机/维修中/停机',
+  changed_by    BIGINT DEFAULT NULL,
+  remark        VARCHAR(256) DEFAULT NULL,
+  changed_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  KEY idx_eqlog_dev (device_code, changed_at),
+  CONSTRAINT fk_eqlog_device FOREIGN KEY (device_code) REFERENCES device(code)
+) COMMENT='设备状态变更日志';
+
+-- 预警记录（预警中心）
+CREATE TABLE alert (
+  id            BIGINT AUTO_INCREMENT PRIMARY KEY,
+  level         VARCHAR(8) NOT NULL DEFAULT '一般' COMMENT '紧急/重要/一般',
+  type          VARCHAR(32) NOT NULL COMMENT '延期风险/库存不足/质量异常/设备停机/…',
+  title         VARCHAR(128) NOT NULL,
+  content       VARCHAR(512) DEFAULT NULL,
+  ref_type      VARCHAR(32) DEFAULT NULL COMMENT '关联对象：work_order/device/…',
+  ref_id        BIGINT DEFAULT NULL,
+  status        VARCHAR(16) NOT NULL DEFAULT '未处理' COMMENT '未处理/已确认/已关闭',
+  created_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+) COMMENT='预警记录';
+
+-- AI 问答日志（成本账本 + 审计：记录 Text-to-SQL 问数与 RAG 问答）
+CREATE TABLE ai_query_log (
+  id            BIGINT AUTO_INCREMENT PRIMARY KEY,
+  user_id       BIGINT DEFAULT NULL COMMENT '提问人',
+  kind          VARCHAR(16) NOT NULL COMMENT 'nl_query=智能问数/rag=知识问答/report=日报生成/root_cause=根因分析',
+  question      TEXT NOT NULL COMMENT '用户原始问题',
+  sql_generated TEXT DEFAULT NULL COMMENT '生成的SQL（问数场景）',
+  answer        TEXT DEFAULT NULL COMMENT '返回答案摘要',
+  tokens_in     INT DEFAULT 0,
+  tokens_out    INT DEFAULT 0,
+  latency_ms    INT DEFAULT 0,
+  status        VARCHAR(16) NOT NULL DEFAULT '成功' COMMENT '成功/失败/降级',
+  created_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  KEY idx_aiq_user (user_id, created_at)
+) COMMENT='AI问答日志';
+
+-- 操作审计日志
+CREATE TABLE audit_log (
+  id            BIGINT AUTO_INCREMENT PRIMARY KEY,
+  user_id       BIGINT DEFAULT NULL,
+  action        VARCHAR(64) NOT NULL COMMENT '动作：创建工单/修改BOM/…',
+  target        VARCHAR(128) DEFAULT NULL COMMENT '操作对象',
+  detail        TEXT DEFAULT NULL,
+  ip            VARCHAR(45) DEFAULT NULL,
+  created_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  KEY idx_audit_user (user_id, created_at)
+) COMMENT='操作审计日志';

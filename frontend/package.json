@@ -1,0 +1,32 @@
+{
+  "name": "frontend",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "精创电子 MES + AI 演示项目 · Vue3 前端骨架（S4）",
+  "scripts": {
+    "dev": "vite",
+    "build": "vue-tsc -b && vite build",
+    "preview": "vite preview --port 3000 --strictPort",
+    "typecheck": "vue-tsc -b",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "@element-plus/icons-vue": "^2.3.2",
+    "axios": "^1.7.9",
+    "element-plus": "^2.9.1",
+    "pinia": "^3.0.1",
+    "vue": "^3.5.42",
+    "vue-router": "^4.5.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.13.3",
+    "@vitejs/plugin-vue": "^6.0.8",
+    "@vue/tsconfig": "^0.9.1",
+    "typescript": "~6.0.2",
+    "vite": "^8.3.0",
+    "vitest": "^4.1.11",
+    "vue-tsc": "^3.3.11"
+  }
+}

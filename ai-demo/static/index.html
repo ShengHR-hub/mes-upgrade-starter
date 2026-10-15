@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>精创电子 MES-AI 演示</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;background:#f4f6fa;color:#1f2937;min-height:100vh}
+header{background:#0f2a4a;color:#fff;padding:18px 28px}
+header h1{font-size:20px}
+header p{font-size:13px;opacity:.75;margin-top:4px}
+.tabs{display:flex;gap:8px;padding:16px 28px 0}
+.tab{padding:10px 22px;border:none;border-radius:8px 8px 0 0;background:#dde3ec;font-size:15px;cursor:pointer}
+.tab.active{background:#fff;font-weight:700;color:#0f2a4a}
+main{background:#fff;margin:0 28px 28px;padding:24px;border-radius:0 8px 8px 8px;min-height:60vh;box-shadow:0 2px 10px rgba(0,0,0,.06)}
+.panel{display:none}
+.panel.active{display:block}
+.qa-box{display:flex;gap:10px;margin-bottom:16px}
+.qa-box input{flex:1;padding:12px 14px;font-size:15px;border:1px solid #cbd5e1;border-radius:8px}
+.qa-box button,.gen-btn{padding:12px 26px;background:#0f2a4a;color:#fff;border:none;border-radius:8px;font-size:15px;cursor:pointer}
+.qa-box button:disabled{opacity:.5}
+.chips{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:18px}
+.chip{background:#eef2f7;border:1px solid #d7dee8;padding:7px 13px;border-radius:20px;font-size:13px;cursor:pointer}
+.chip:hover{background:#dbe4f0}
+.answer{background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:18px;white-space:pre-wrap;line-height:1.8;font-size:15px}
+.sources{margin-top:12px;font-size:13px;color:#64748b}
+.sources div{margin-top:4px}
+.mode-tag{display:inline-block;background:#e0f2fe;color:#0369a1;font-size:12px;padding:3px 10px;border-radius:12px;margin-bottom:10px}
+.report{line-height:1.9;font-size:15px}
+.report h1{font-size:22px;margin-bottom:6px}
+.report h2{font-size:17px;margin:18px 0 8px;color:#0f2a4a}
+.report table{border-collapse:collapse;width:100%;font-size:13px;margin:8px 0}
+.report th,.report td{border:1px solid #d7dee8;padding:7px 9px;text-align:left}
+.report th{background:#eef2f7}
+.report blockquote{border-left:4px solid #f59e0b;background:#fffbeb;padding:10px 14px;margin:10px 0;font-size:13px;color:#92400e}
+.report hr{margin:16px 0;border:none;border-top:1px solid #e2e8f0}
+.loading{color:#64748b;padding:20px;text-align:center}
+footer{text-align:center;color:#94a3b8;font-size:12px;padding:0 0 24px}
+</style>
+</head>
+<body>
+<header>
+<h1>精创电子 · MES-AI 智能助手演示</h1>
+<p>RAG 工艺知识问答 + AI 生产日报 ｜ 数据：企业真实主数据 ＋ 演示日数据（已标注）</p>
+</header>
+<div class="tabs">
+<button class="tab active" onclick="show('qa')">智能问答</button>
+<button class="tab" onclick="show('report')">AI 生产日报</button>
+</div>
+<main>
+<div id="qa" class="panel active">
+<div class="chips">
+<span class="chip">公司的核心痛点是什么？</span>
+<span class="chip">JC-PLC-2001有哪些工序？</span>
+<span class="chip">EQP-SMT-006这台设备现在什么状态？</span>
+<span class="chip">MES系统有哪些功能模块？</span>
+<span class="chip">SN追溯能解决什么问题？</span>
+</div>
+<div class="qa-box">
+<input id="q" placeholder="输入问题，例如：JC-IoT-4G-A的BOM有哪些物料？" onkeydown="if(event.key==='Enter')ask()">
+<button id="askBtn" onclick="ask()">提问</button>
+</div>
+<div id="out"></div>
+</div>
+<div id="report" class="panel">
+<button class="gen-btn" onclick="genReport()">生成今日日报</button>
+<div id="repOut" style="margin-top:16px"></div>
+</div>
+</main>
+<footer>演示系统 · RAG 知识库 31 个知识块 · 未配置 AI Key 时为本地模式，配置后可切换大模型生成</footer>
+<script>
+function show(id){
+document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));
+event.target.classList.add('active');
+document.getElementById(id).classList.add('active');
+}
+document.querySelectorAll('.chip').forEach(c=>c.onclick=()=>{document.getElementById('q').value=c.textContent;ask();});
+async function ask(){
+const q=document.getElementById('q').value.trim();
+if(!q)return;
+const btn=document.getElementById('askBtn');btn.disabled=true;
+document.getElementById('out').innerHTML='<div class="loading">检索知识库中…</div>';
+try{
+const r=await fetch('/api/ask',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({question:q})});
+const d=await r.json();
+let html='<span class="mode-tag">模式：'+esc(d.mode)+'</span><div class="answer">'+esc(d.answer)+'</div>';
+if(d.sources&&d.sources.length){
+html+='<div class="sources">引用来源：'+d.sources.map(s=>'<div>· '+esc(s.source)+'（相关度 '+s.score+'）</div>').join('')+'</div>';
+}
+document.getElementById('out').innerHTML=html;
+}catch(e){document.getElementById('out').innerHTML='<div class="loading">请求失败：'+esc(e.message)+'</div>';}
+btn.disabled=false;
+}
+function md2html(md){
+return md.split('\n').map(line=>{
+if(line.startsWith('# '))return '<h1>'+esc(line.slice(2))+'</h1>';
+if(line.startsWith('## '))return '<h2>'+esc(line.slice(3))+'</h2>';
+if(line.startsWith('> '))return '<blockquote>'+esc(line.slice(2))+'</blockquote>';
+if(line.startsWith('---'))return '<hr>';
+if(line.startsWith('|')){const c=line.split('|').slice(1,-1).map(x=>'<td>'+esc(x.trim())+'</td>').join('');return '<tr>'+c+'</tr>';}
+if(/^\d+\./.test(line))return '<p>'+esc(line)+'</p>';
+if(line.startsWith('- '))return '<p>• '+esc(line.slice(2))+'</p>';
+if(line.trim()==='')return '';
+return '<p>'+esc(line)+'</p>';
+}).join('').replace(/<tr><td>-+<\/td><\/tr>/g,'');
+}
+async function genReport(){
+document.getElementById('repOut').innerHTML='<div class="loading">正在生成日报…</div>';
+try{
+const r=await fetch('/api/report');const d=await r.json();
+let html='<span class="mode-tag">模式：'+esc(d.mode)+'</span><div class="report">'+md2html(d.markdown)+'</div>';
+html=html.replace(/<tr><td>产线<\/td>/,'<table><tr><th>产线</th>').replace(/<\/tr><p>/,'</tr></table><p>');
+document.getElementById('repOut').innerHTML=html;
+}catch(e){document.getElementById('repOut').innerHTML='<div class="loading">请求失败</div>';}
+}
+function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+</script>
+</body>
+</html>
