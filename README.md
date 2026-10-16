@@ -105,6 +105,16 @@ npm ci
 npm run start:dev
 ```
 
+#### 首次初始化管理员密码
+
+`db/seed.sql` 中的用户密码是占位哈希，不能直接登录。首次使用本机 MySQL 时，先完成表结构和种子数据导入，再在项目根目录运行下面的脚本。脚本会隐藏读取 MySQL 密码和你要设置的管理员密码，只允许把仍是占位哈希的 `admin` 账号初始化为可用的 Argon2id 密码；已有可用密码时会拒绝修改，不会清库或重导数据。
+
+```powershell
+.\scripts\bootstrap-admin.ps1
+```
+
+初始化后使用用户名 `admin` 和你刚设置的密码登录。登录后进入“用户管理”，由管理员通过 `POST /api/v1/users` 对应的页面创建 `manager` 或 `operator` 账号，并可按需停用账号或调整角色。不要把密码写入 `.env`、命令行参数、日志或 Git。
+
 后端默认监听 `http://localhost:3001`，API 前缀为 `/api/v1`。
 
 ### 2. AI 服务
@@ -134,6 +144,21 @@ npm run dev
 ### 停止服务
 
 在各服务所在 PowerShell 窗口按 `Ctrl+C`。不要通过删除数据库、清空表或重导数据来停止或重置演示环境。
+
+### 推荐的一键本地启动
+
+为避免后端和 AI 服务的进程令牌不一致，推荐在项目根目录执行：
+
+```powershell
+.\scripts\start-local.ps1
+```
+
+该脚本只在当前进程内生成随机 `JWT_SECRET` 和 `AI_SERVICE_TOKEN`，分别传递给后端及 AI 服务，不打印、不写入磁盘。脚本启动后，再单独启动前端：
+
+```powershell
+cd frontend
+npm run dev
+```
 
 ### 常见启动问题
 
