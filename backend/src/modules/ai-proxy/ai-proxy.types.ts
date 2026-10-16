@@ -161,3 +161,47 @@ export interface InternalQueryAnswerResponseData {
   usage?: { tokensIn: number; tokensOut: number };
   latencyMs: number;
 }
+
+// ---------------------------------------------------------------- F1 企业知识问答（RAG）
+
+export interface InternalRagAnswerRequest {
+  question: string;
+  topK: number;
+  userContext: UserContextDto;
+  requestId: string;
+}
+
+export interface InternalRagCitationItem {
+  sourceName: string;
+  chunkId: string;
+  relevance: number;
+  excerpt?: string;
+}
+
+export interface InternalRagAnswerResponseData {
+  answerStatus: 'answered' | 'not_found' | string;
+  answer: string;
+  citations: InternalRagCitationItem[];
+  knowledgeSource?: string | null;
+  reason?: string | null;
+  mode: 'local' | 'llm' | string;
+  degraded: boolean;
+  usage?: { tokensIn: number; tokensOut: number };
+  latencyMs: number;
+}
+
+export interface InternalKnowledgeSourceItem {
+  sourceName: string;
+  chunkCount: number;
+  dataSource?: string | null;
+}
+
+export interface InternalKnowledgeSourcesResponseData {
+  list: InternalKnowledgeSourceItem[];
+  total: number;
+  page: number;
+  pageSize: number;
+  knowledgeSource?: string | null;
+  chunkTotal?: number | null;
+  latencyMs?: number | null;
+}

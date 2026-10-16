@@ -81,7 +81,7 @@ import time
 import uuid
 from typing import Any, Dict, List, Optional, Union
 
-from fastapi import Depends, FastAPI, Header, Request
+from fastapi import Depends, FastAPI, Header, Query, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from pydantic import (BaseModel, ConfigDict, Field, ValidationError as PydanticValidationError,
@@ -920,6 +920,42 @@ async def rag_answers(body: RagAnswerRequest) -> Dict[str, Any]:
     ]
 
     return envelope(_rag_payload("answered", answer, citations, mode, degraded, usage, t0))
+
+
+# =========================================================================
+# 1b. GET /api/v1/ai/knowledge-sources （知识来源清单，服务令牌保护）
+#     契约 §7.3：Page({sourceName, chunkCount, dataSource})
+#     chunkCount 按 knowledge.json 的 source 聚合统计（契约明示口径）。
+# =========================================================================
+@app.get("/api/v1/ai/knowledge-sources", dependencies=[Depends(require_service_token)])
+async def knowledge_sources(page: int = Query(default=1, ge=1),
+                            pageSize: int = Query(default=50, ge=1, le=100)) -> Dict[str, Any]:
+    t0 = time.perf_counter()
+    grouped: Dict[str, int] = {}
+    for d in _KB_DOCS:
+        src = str(d.get("source", "") or "未知来源")
+        grouped[src] = grouped.get(src, 0) + 1
+    items = [
+        {
+            "sourceName": src,
+            "chunkCount": cnt,
+            "dataSource": "enterprise-documents",
+        }
+        for src, cnt in sorted(grouped.items(), key=lambda kv: (-kv[1], kv[0]))
+    ]
+    total = len(items)
+    start = (page - 1) * pageSize
+    slice_items = items[start:start + pageSize]
+    payload = {
+        "list": slice_items,
+        "total": total,
+        "page": page,
+        "pageSize": pageSize,
+        "knowledgeSource": "enterprise-documents",
+        "chunkTotal": len(_KB_DOCS),
+        "latencyMs": _elapsed_ms(t0),
+    }
+    return envelope(payload)
 
 
 # =========================================================================

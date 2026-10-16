@@ -11,10 +11,13 @@ import type {
   InternalDailyReportRequest,
   InternalDailyReportResponseData,
   InternalEnvelope,
+  InternalKnowledgeSourcesResponseData,
   InternalQueryAnswerRequest,
   InternalQueryAnswerResponseData,
   InternalQueryIntentRequest,
   InternalQueryIntentResponseData,
+  InternalRagAnswerRequest,
+  InternalRagAnswerResponseData,
   InternalRootCauseRequest,
   InternalRootCauseResponseData,
 } from './ai-proxy.types.js';
@@ -562,6 +565,241 @@ export class AiProxyService {
       payload.requestId,
     );
     return this.validateQueryAnswerData(rawData);
+  }
+
+  // ---------------------------------------------------------------- F1 企业知识问答（RAG）
+
+  /**
+   * 运行时结构校验：RAG 问答响应数据
+   */
+  private validateRagAnswerData(data: any): InternalRagAnswerResponseData {
+    if (!data || typeof data !== 'object' || Array.isArray(data)) {
+      throw new BusinessException(
+        ErrorCode.DEPENDENCY_UNAVAILABLE,
+        'AI 服务返回 RAG 数据非有效对象',
+      );
+    }
+    const validAnswerStatuses = new Set(['answered', 'not_found']);
+    if (typeof data.answerStatus !== 'string' || !validAnswerStatuses.has(data.answerStatus)) {
+      throw new BusinessException(
+        ErrorCode.DEPENDENCY_UNAVAILABLE,
+        `AI 服务返回 RAG 数据 answerStatus 非法: ${data.answerStatus}`,
+      );
+    }
+    if (typeof data.answer !== 'string' || data.answer.trim().length === 0) {
+      throw new BusinessException(
+        ErrorCode.DEPENDENCY_UNAVAILABLE,
+        'AI 服务返回 RAG 数据 answer 必须为非空字符串',
+      );
+    }
+    if (!Array.isArray(data.citations)) {
+      throw new BusinessException(
+        ErrorCode.DEPENDENCY_UNAVAILABLE,
+        'AI 服务返回 RAG 数据缺少 citations 数组',
+      );
+    }
+    for (let i = 0; i < data.citations.length; i++) {
+      const c = data.citations[i];
+      if (!c || typeof c !== 'object' || Array.isArray(c)) {
+        throw new BusinessException(
+          ErrorCode.DEPENDENCY_UNAVAILABLE,
+          `AI 服务返回 citations[${i}] 非有效对象`,
+        );
+      }
+      if (typeof c.sourceName !== 'string' || c.sourceName.trim().length === 0) {
+        throw new BusinessException(
+          ErrorCode.DEPENDENCY_UNAVAILABLE,
+          `AI 服务返回 citations[${i}].sourceName 必须为非空字符串`,
+        );
+      }
+      if (typeof c.chunkId !== 'string' || c.chunkId.trim().length === 0) {
+        throw new BusinessException(
+          ErrorCode.DEPENDENCY_UNAVAILABLE,
+          `AI 服务返回 citations[${i}].chunkId 必须为非空字符串`,
+        );
+      }
+      if (
+        typeof c.relevance !== 'number' ||
+        Number.isNaN(c.relevance) ||
+        c.relevance < 0 ||
+        c.relevance > 1
+      ) {
+        throw new BusinessException(
+          ErrorCode.DEPENDENCY_UNAVAILABLE,
+          `AI 服务返回 citations[${i}].relevance 必须为 0~1 的数字`,
+        );
+      }
+    }
+    const validModes = new Set(['local', 'llm', 'local_rule']);
+    if (typeof data.mode !== 'string' || !validModes.has(data.mode)) {
+      throw new BusinessException(
+        ErrorCode.DEPENDENCY_UNAVAILABLE,
+        'AI 服务返回 RAG 数据 mode 标识非法',
+      );
+    }
+    if (typeof data.degraded !== 'boolean') {
+      throw new BusinessException(
+        ErrorCode.DEPENDENCY_UNAVAILABLE,
+        'AI 服务返回 RAG 数据 degraded 必须为布尔值',
+      );
+    }
+
+    this.validateUsageAndLatency(data);
+
+    return data as InternalRagAnswerResponseData;
+  }
+
+  /**
+   * 运行时结构校验：知识来源清单响应数据
+   */
+  private validateKnowledgeSourcesData(data: any): InternalKnowledgeSourcesResponseData {
+    if (!data || typeof data !== 'object' || Array.isArray(data)) {
+      throw new BusinessException(
+        ErrorCode.DEPENDENCY_UNAVAILABLE,
+        'AI 服务返回知识来源数据非有效对象',
+      );
+    }
+    if (!Array.isArray(data.list)) {
+      throw new BusinessException(
+        ErrorCode.DEPENDENCY_UNAVAILABLE,
+        'AI 服务返回知识来源数据缺少 list 数组',
+      );
+    }
+    for (let i = 0; i < data.list.length; i++) {
+      const item = data.list[i];
+      if (!item || typeof item !== 'object' || Array.isArray(item)) {
+        throw new BusinessException(
+          ErrorCode.DEPENDENCY_UNAVAILABLE,
+          `AI 服务返回知识来源 list[${i}] 非有效对象`,
+        );
+      }
+      if (typeof item.sourceName !== 'string' || item.sourceName.trim().length === 0) {
+        throw new BusinessException(
+          ErrorCode.DEPENDENCY_UNAVAILABLE,
+          `AI 服务返回知识来源 list[${i}].sourceName 必须为非空字符串`,
+        );
+      }
+      if (
+        typeof item.chunkCount !== 'number' ||
+        !Number.isInteger(item.chunkCount) ||
+        item.chunkCount < 0
+      ) {
+        throw new BusinessException(
+          ErrorCode.DEPENDENCY_UNAVAILABLE,
+          `AI 服务返回知识来源 list[${i}].chunkCount 必须为非负整数`,
+        );
+      }
+    }
+    if (typeof data.total !== 'number' || !Number.isInteger(data.total) || data.total < 0) {
+      throw new BusinessException(
+        ErrorCode.DEPENDENCY_UNAVAILABLE,
+        'AI 服务返回知识来源数据 total 必须为非负整数',
+      );
+    }
+    return data as InternalKnowledgeSourcesResponseData;
+  }
+
+  /**
+   * 调用内部 F1 RAG 问答接口（POST /api/v1/ai/rag-answers）
+   */
+  async callRagAnswers(
+    payload: InternalRagAnswerRequest,
+  ): Promise<InternalRagAnswerResponseData> {
+    const rawData = await this.requestFastApi<InternalRagAnswerResponseData>(
+      '/api/v1/ai/rag-answers',
+      payload,
+      payload.requestId,
+    );
+    return this.validateRagAnswerData(rawData);
+  }
+
+  /**
+   * 调用内部 F1 知识来源清单接口（GET /api/v1/ai/knowledge-sources）
+   *
+   * 与 POST 代理共用鉴权头与错误映射；query 参数经 URL 编码传递。
+   */
+  async callKnowledgeSources(
+    query: { page?: number; pageSize?: number },
+    requestId: string,
+  ): Promise<InternalKnowledgeSourcesResponseData> {
+    const baseUrl = this.getBaseUrl();
+    const token = this.getServiceToken();
+    const params = new URLSearchParams();
+    if (query.page !== undefined) params.set('page', String(query.page));
+    if (query.pageSize !== undefined) params.set('pageSize', String(query.pageSize));
+    const qs = params.toString();
+    const targetUrl = `${baseUrl}/api/v1/ai/knowledge-sources${qs ? `?${qs}` : ''}`;
+
+    const headers: Record<string, string> = { 'X-Request-Id': requestId };
+    if (token) {
+      headers.Authorization = `Bearer ${token}`;
+    }
+
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 5000);
+
+    let response: Response;
+    let responseJson: InternalEnvelope<InternalKnowledgeSourcesResponseData>;
+    try {
+      response = await fetch(targetUrl, { method: 'GET', headers, signal: controller.signal });
+      try {
+        responseJson = (await response.json()) as InternalEnvelope<InternalKnowledgeSourcesResponseData>;
+      } catch (err: any) {
+        if (err?.name === 'AbortError' || controller.signal.aborted) {
+          throw err;
+        }
+        throw new BusinessException(
+          ErrorCode.DEPENDENCY_UNAVAILABLE,
+          `AI 服务返回非 JSON 响应（HTTP ${response.status}）`,
+        );
+      }
+    } catch (err: any) {
+      if (err instanceof BusinessException) {
+        throw err;
+      }
+      if (err?.name === 'AbortError' || controller.signal.aborted) {
+        throw new BusinessException(
+          ErrorCode.DEPENDENCY_TIMEOUT,
+          'AI 服务调用超时（>5000ms）',
+        );
+      }
+      this.logger.error(
+        redactForLog(`FastAPI 连接失败 [knowledge-sources]: ${err?.message || '网络连接异常'}`),
+      );
+      throw new BusinessException(
+        ErrorCode.DEPENDENCY_UNAVAILABLE,
+        'AI 服务不可用或无法连接',
+      );
+    } finally {
+      clearTimeout(timer);
+    }
+
+    if (!response.ok || responseJson.code !== 0) {
+      const code = responseJson.code ?? response.status;
+      const rawMessage = responseJson.message || `HTTP ${response.status}`;
+      if (response.status === 401 || code === 20001) {
+        throw new BusinessException(
+          ErrorCode.INTERNAL_ERROR,
+          'AI 服务内部鉴权失败：AI_SERVICE_TOKEN 无效或缺失',
+        );
+      }
+      this.logger.error(
+        redactForLog(`AI 服务处理异常 [knowledge-sources]: ${rawMessage}`),
+      );
+      throw new BusinessException(
+        ErrorCode.DEPENDENCY_UNAVAILABLE,
+        'AI 服务处理异常',
+      );
+    }
+
+    if (!responseJson.data || typeof responseJson.data !== 'object') {
+      throw new BusinessException(
+        ErrorCode.DEPENDENCY_UNAVAILABLE,
+        'AI 服务返回包体缺少有效 data 节点',
+      );
+    }
+
+    return this.validateKnowledgeSourcesData(responseJson.data);
   }
 
   /**

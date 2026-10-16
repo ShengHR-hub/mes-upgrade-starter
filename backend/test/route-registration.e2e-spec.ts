@@ -142,6 +142,9 @@ describe('DI 装配与路由注册', () => {
       ['get', '/api/v1/quality-analyses/good-rates'],
       // S11/B12: MRP-lite 毛需求计算（admin/manager；operator 由 s11-permissions 单独断言）
       ['post', '/api/v1/material-requirement-calculations'],
+      // F1 企业知识问答（RAG 代理；三角色可用，未认证时 fail-closed 401）
+      ['post', '/api/v1/rag-answers'],
+      ['get', '/api/v1/knowledge-sources'],
     ];
 
     for (const [method, path] of probes) {
@@ -157,9 +160,6 @@ describe('DI 装配与路由注册', () => {
       ['delete', '/api/v1/work-orders/1'],
       ['post', '/api/v1/work-orders'],
       ['post', '/api/v1/tasks'],
-      // F1 RAG 知识问答尚未实现（S9 范围不含 F1；列入 S10 交接说明）
-      ['post', '/api/v1/rag-answers'],
-      ['get', '/api/v1/knowledge-sources'],
       // B14 开放 API：本版未启用（Q8 未批准：无集成身份、外部编号、eventId 幂等存储）。
       // 未启用 = 路由不注册 → 404/30001；不接受匿名设备上传或浏览器 JWT 冒充集成身份。
       ['post', '/api/v1/integrations/erp-orders'],

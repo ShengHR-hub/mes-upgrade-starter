@@ -12,6 +12,7 @@ import { DashboardsModule } from './modules/dashboards/dashboards.module.js';
 import { DataQueriesModule } from './modules/data-queries/data-queries.module.js';
 import { DevicesModule } from './modules/devices/devices.module.js';
 import { HealthModule } from './modules/health/health.module.js';
+import { KnowledgeModule } from './modules/knowledge/knowledge.module.js';
 import { MaterialBatchesModule } from './modules/material-batches/material-batches.module.js';
 import { MaterialRequirementsModule } from './modules/material-requirements/material-requirements.module.js';
 import { MaterialsModule } from './modules/materials/materials.module.js';
@@ -60,6 +61,7 @@ import { WorkOrdersModule } from './modules/work-orders/work-orders.module.js';
     AuthModule,
     AuditModule,
     HealthModule,
+    KnowledgeModule,
     ProductsModule,
     OrdersModule,
     WorkOrdersModule,

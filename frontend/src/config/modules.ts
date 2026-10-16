@@ -270,7 +270,8 @@ export const MODULES: readonly ModuleDefinition[] = [
     summary: 'RAG 工艺知识问答，回答带引用来源；资料中没有的信息明确拒答。',
     readPermission: 'rag-answers:create',
     plannedApis: ['POST /api/v1/rag-answers', 'GET /api/v1/knowledge-sources'],
-    implemented: false,
+    implemented: true,
+    component: () => import('@/views/ai-knowledge/AiKnowledgeView.vue'),
   },
   {
     key: 'materials',
