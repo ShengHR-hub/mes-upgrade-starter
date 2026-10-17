@@ -73,30 +73,103 @@ ai-demo/                 AI 演示输入资料
 - Node.js 22+
 - npm 10
 - Python 3.11
-- MySQL 8（仅在获授权的隔离环境执行真实数据库验收）
+- MySQL 8（本地运行所需；验收测试使用获授权的隔离库）
+- Git（通过命令行克隆仓库时需要）
 - PowerShell 7（Windows 验证脚本）
 
-所有密码、密钥、Token 只通过进程环境变量注入。不要提交 `.env`，不要在聊天、日志、截图或测试报告中输出完整凭据。
+启动器通过进程环境变量向服务注入口令、密钥和令牌；本地数据库口令的保存方式见下文。不要提交 `.env`，不要在日志、截图或测试报告中输出完整凭据。
 
-## 本地启动与网站访问（Windows PowerShell 7）
+## 安装与启动（Windows）
 
-### 你目前这台电脑：日常启动
+以下步骤使用 **PowerShell 7**（命令为 `pwsh`），不适用于 CMD 或 Windows PowerShell 5.1。启动器面向本地开发环境，不作为生产部署方案。
 
-数据库和依赖已经配置过时，只需执行本小节。不要重复安装、初始化管理员或导入数据库。
+### 1. 获取项目
 
-**1. 打开命令行。** 在 Windows 开始菜单搜索并打开 **PowerShell 7**，或者在 Windows Terminal 中选择 PowerShell 7 标签页。这里使用 `pwsh`，不是 CMD，也不是 MySQL 命令行；通常不需要管理员权限。
-
-**2. 复制下面三行，一起粘贴到 PowerShell，按回车。** 第一行进入项目，第二行启动三个服务，第三行显示启动结果：
+打开 PowerShell 7，在希望保存项目的目录执行：
 
 ```powershell
-Set-Location -LiteralPath 'D:\wordbuddy\AI重构软件全栈开发项目实战（基于Trae)培训资料\mes-upgrade-starter'
+git clone https://github.com/ShengHR-hub/mes-upgrade-starter.git
+Set-Location .\mes-upgrade-starter
+```
+
+后续安装与启动命令均在**项目根目录**执行，即包含 `backend`、`frontend`、`ai-service`、`db` 和 `scripts` 的目录。已下载项目的读者无需再次克隆，可在文件资源管理器中打开项目文件夹，在地址栏输入 `pwsh` 并回车，以该目录打开 PowerShell 7。
+
+### 2. 安装依赖
+
+先安装「环境要求」中列出的工具，并确认 MySQL 服务正在运行。
+
+```powershell
+npm --prefix .\backend ci
+npm --prefix .\frontend ci
+py -3.11 -m venv .\ai-service\.venv
+.\ai-service\.venv\Scripts\python.exe -m pip install -r .\ai-service\requirements.txt
+```
+
+### 3. 配置数据库连接
+
+复制配置模板；已有配置文件不会被覆盖：
+
+```powershell
+if (-not (Test-Path .\backend\.env)) { Copy-Item .\backend\.env.example .\backend\.env }
+if (-not (Test-Path .\frontend\.env.development)) { Copy-Item .\frontend\.env.example .\frontend\.env.development }
+notepad .\backend\.env
+```
+
+按实际环境设置 `DB_HOST`、`DB_PORT`、`DB_USERNAME` 和 `DB_DATABASE`。默认目标为 `127.0.0.1:3306` 的 `smart_mes`。`DB_PASSWORD` 留空，使用下面的本地隐藏输入窗口保存数据库口令：
+
+```powershell
+pwsh -NoProfile -ExecutionPolicy Bypass -File .\scripts\input-db-password.ps1
+```
+
+输入的是 **MySQL 连接账号的密码**，不是 MES 网站密码。口令持久保存在当前 Windows 用户的环境变量 `MES_DB_PASSWORD` 中（用户注册表），这不是加密凭据库。数据库密码变化后需重新运行该命令。
+
+AI 服务不读取 `.env`。启动器生成并注入后端与 AI 服务共享的令牌，以及 JWT 签名密钥；重启后需重新登录。未配置商业模型时使用本地规则/抽取模式。
+
+### 4. 初始化数据库与管理员（仅首次安装）
+
+启动器不会创建数据库或自动同步表结构。数据库结构见 [db/schema.sql](db/schema.sql)，基础数据见 [db/seed.sql](db/seed.sql)。**`seed.sql` 含清表操作，仅限全新、可丢弃的开发数据库；已有数据的数据库不得重导。** 接入已有数据库时，应先核对表结构，跳过初始化导入。
+
+在全新开发库中，可使用 MySQL 客户端加载这两个 SQL 文件。若使用命令行，先在项目根目录运行 `mysql -h 127.0.0.1 -P 3306 -u root -p`，按实际配置替换连接参数，并在交互提示中输入密码。以下语句在 **MySQL 客户端**中执行；文件路径使用项目所在位置的绝对路径和正斜杠，例如：
+
+```sql
+SOURCE C:/projects/mes-upgrade-starter/db/schema.sql;
+USE smart_mes;
+SOURCE C:/projects/mes-upgrade-starter/db/seed.sql;
+```
+
+`C:/projects/mes-upgrade-starter` 为示例路径，执行前必须替换。导入前检查 SQL 中的目标库名与连接配置一致。输入 `exit` 退出 MySQL 客户端，返回 PowerShell。
+
+种子数据中的用户密码为占位哈希，不能直接登录。在项目根目录执行：
+
+```powershell
+pwsh -NoProfile -ExecutionPolicy Bypass -File .\scripts\bootstrap-admin.ps1
+```
+
+按隐藏输入提示，分别输入 MySQL 密码和要设置的 MES 管理员密码。脚本仅初始化仍使用占位哈希的 `admin` 账号；已有可用密码时会拒绝修改。管理员密码不应写入命令参数、配置文件、日志或 Git。
+
+### 5. 启动服务（日常使用）
+
+完成首次配置后，日常只需确保 MySQL 服务运行，并在**项目根目录的 PowerShell 7**中执行：
+
+```powershell
 pwsh -NoProfile -ExecutionPolicy Bypass -File .\scripts\dev-up.ps1
+```
+
+若终端位于其他目录，可改用脚本的完整路径。例如项目保存于 `C:\projects\mes-upgrade-starter` 时：
+
+```powershell
+pwsh -NoProfile -ExecutionPolicy Bypass -File 'C:\projects\mes-upgrade-starter\scripts\dev-up.ps1'
+```
+
+完整路径必须替换为实际项目路径。`-ExecutionPolicy Bypass` 仅作用于本次脚本进程，不改变永久执行策略。
+
+启动器自动打开后端、AI 和前端三个服务窗口；保持这些窗口运行，无需再分别启动服务。待原窗口恢复 PowerShell 提示符后，执行：
+
+```powershell
 Get-Content "$env:TEMP\mes-dev-status.txt"
 ```
 
-项目在其他位置时，只修改第一行引号里的路径。`-ExecutionPolicy Bypass` 仅作用于本次脚本进程，不修改永久执行策略。脚本会打开后端、AI、前端三个窗口，请保留它们运行，等待原窗口完成健康检查。无需再分别输入 `npm run dev` 或启动 AI 服务。
-
-**3. 确认成功。** 状态输出包含下面各行，才表示三个服务健康检查通过（中间还会输出服务详情）：
+以下结果表示三个服务健康检查通过：
 
 ```text
 BACKEND_HEALTH_HTTP 200
@@ -106,97 +179,42 @@ OVERALL OK
 DONE
 ```
 
-出现 `timeout` 或 `OVERALL FAILED` 时，按后面的排查表处理，不能仅凭打开了服务窗口判断启动成功。
+出现 `timeout` 或 `OVERALL FAILED` 时，查看对应服务窗口的错误信息。健康检查通过表示服务可达，不等于完整业务验收通过。
 
-**4. 打开网站。** 在 Chrome 或 Edge 地址栏输入 **http://localhost:3000/login**，或在原 PowerShell 窗口执行：
+### 6. 访问网站与创建用户
 
-```powershell
-Start-Process 'http://localhost:3000/login'
-```
+打开 [MES 登录页面](http://localhost:3000/login)，使用 `admin` 和初始化时设置的 MES 管理员密码登录。登录是校验已有密码，不会创建账号或设置新密码。
 
-使用用户名 `admin` 和本机已经设置的 MES 管理员密码登录；这里不是 MySQL 密码。内部系统没有公开注册入口，管理员登录后从「用户管理」创建其他账号，并分配 `manager` 或 `operator` 角色。
-
-### 提示 MES_DB_PASSWORD is not set 时
-
-在上述项目根目录的 PowerShell 窗口执行：
-
-```powershell
-pwsh -NoProfile -ExecutionPolicy Bypass -File .\scripts\input-db-password.ps1
-```
-
-在弹出的隐藏输入框内输入**本机 MySQL 数据库密码**，点击 OK，再重新执行日常启动的第二、三行。不要输入 MES 网站密码，也不要把数据库密码发送到聊天中。
-
-口令保存在当前 Windows 用户环境变量 `MES_DB_PASSWORD` 中，持久保存于用户注册表；**这不是加密凭据库**。数据库密码变化后需再次输入。JWT 密钥和 AI 服务令牌由启动器随机生成并传给子进程，无需手动配置，重启后需重新登录网站。
-
-### 网站与服务地址
+系统面向内部用户，不提供公开注册。管理员登录后，从「用户管理」创建 `manager` 或 `operator` 账号并分配权限。其他用户使用管理员分配的账号密码登录。
 
 | 服务 | 地址 | 用途 |
 |---|---|---|
-| 前端网站 | `http://localhost:3000` | 登录、驾驶舱、业务模块、移动工作台 |
-| 登录入口 | `http://localhost:3000/login` | 进入系统 |
-| 移动工作台 | `http://localhost:3000/mobile` | PWA/移动场景展示入口 |
-| NestJS API | `http://localhost:3001/api/v1` | 业务接口 |
-| FastAPI 文档 | `http://localhost:8000/docs` | AI 服务接口文档 |
+| 前端网站 | http://localhost:3000 | 驾驶舱与业务模块 |
+| 登录入口 | http://localhost:3000/login | 账号登录 |
+| 移动工作台 | http://localhost:3000/mobile | 移动布局与 PWA 入口 |
+| NestJS API | http://localhost:3001/api/v1 | 业务接口 |
+| FastAPI 文档 | http://localhost:8000/docs | AI 服务接口文档 |
 
-启动后，在浏览器地址栏打开 **`http://localhost:3000/login`**；登录成功后从左侧菜单进入驾驶舱、订单、工单、报工、质检、预警、日报、问数、追溯、设备、SPC、MRP 和移动工作台。需要展示移动布局时直接打开 **`http://localhost:3000/mobile`**。
+`localhost` 指运行服务的主机。开发配置绑定本机地址，其他电脑或手机不能用自己的 `localhost` 访问该主机；局域网访问需要另行配置监听地址、网络和访问控制。
 
-以上 `localhost` 表示运行服务的这台电脑。当前开发配置绑定本机地址，手机或其他电脑无法用自己的 `localhost` 访问此系统；局域网访问需另行配置。
+仓库配套演示过程数据的日期范围为 **2026-10-10 至 2026-10-16**。使用该批数据展示日报或趋势时，应选择对应历史日期；当日没有报工时，零值或无数据属于正常结果。
 
-演示过程数据固定在 **2026-10-10 至 2026-10-16**。之后展示日报或趋势时，请在支持日期筛选的页面选择对应历史日期；今日没有报工时，显示零或无数据不表示启动失败。
+### 停止与重启
 
-### 新电脑首次安装（当前已配置的电脑跳过）
+在三个服务窗口中分别按 `Ctrl+C` 停止服务。关闭浏览器不会停止服务。再次启动或重启时执行第 5 步的启动命令；启动器只尝试停止可识别为本项目的端口进程。日常启动无需重复安装依赖、导入数据库或初始化管理员。
 
-先安装前面环境要求中的 Node.js、Python、MySQL 和 PowerShell 7。以下命令都在 **PowerShell 7、项目根目录**执行。新电脑先按日常启动第一行进入自己的项目路径。
+### 常见问题
 
-**1. 安装依赖：**
-
-```powershell
-npm --prefix .\backend ci
-npm --prefix .\frontend ci
-py -3.11 -m venv .\ai-service\.venv
-.\ai-service\.venv\Scripts\python.exe -m pip install -r .\ai-service\requirements.txt
-```
-
-**2. 准备本地配置（已有文件不会覆盖）：**
-
-```powershell
-if (-not (Test-Path .\backend\.env)) { Copy-Item .\backend\.env.example .\backend\.env }
-if (-not (Test-Path .\frontend\.env.development)) { Copy-Item .\frontend\.env.example .\frontend\.env.development }
-notepad .\backend\.env
-```
-
-在记事本中核对 `DB_HOST`、`DB_PORT`、`DB_USERNAME`、`DB_DATABASE`；默认目标是 `127.0.0.1:3306` 的 `smart_mes`。`DB_PASSWORD` 留空，通过隐藏输入脚本提供。AI 服务不读取 `.env`，必要服务令牌由 `dev-up.ps1` 注入；没有商业模型配置时使用 local 模式。
-
-**3. 准备数据库和管理员：** 确保本机 MySQL 服务已运行、数据库表和基础数据已准备。启动器不会创建数据库或导入表。全新空库参考 `db/schema.sql`、`db/seed.sql` 和 `docs/开发操作指导手册.md`；**`seed.sql` 含清表操作，已有数据的库禁止重导。** 接入已有库时跳过导入。
-
-`db/seed.sql` 中的用户密码是占位哈希，不能直接登录。首次使用本机 MySQL 时，先完成表结构和种子数据导入，再在项目根目录运行下面的脚本。脚本会隐藏读取 MySQL 密码和你要设置的管理员密码，只允许把仍是占位哈希的 `admin` 账号初始化为可用的 Argon2id 密码；已有可用密码时会拒绝修改，不会清库或重导数据。
-
-```powershell
-pwsh -NoProfile -ExecutionPolicy Bypass -File .\scripts\bootstrap-admin.ps1
-```
-
-初始化后使用用户名 `admin` 和你刚设置的密码登录。登录后进入“用户管理”，由管理员通过 `POST /api/v1/users` 对应的页面创建 `manager` 或 `operator` 账号，并可按需停用账号或调整角色。不要把密码写入 `.env`、命令行参数、日志或 Git。
-
-后端默认监听 `http://localhost:3001`，API 前缀为 `/api/v1`。
-
-**4. 启动：** 先按前述隐藏输入步骤保存本机 MySQL 口令，再回到「日常启动」执行 `dev-up.ps1`。无需激活 Python 虚拟环境，也不需要手动为三个服务配置共享令牌。
-
-### 停止服务
-
-在各服务所在 PowerShell 窗口按 `Ctrl+C`。不要通过删除数据库、清空表或重导数据来停止或重置演示环境。
-
-下次开机，确认 MySQL 服务已运行后，直接执行「日常启动」的三行命令。重启服务也使用同一命令；启动器只尝试停止可识别为本项目的端口进程。关闭浏览器不会停止后端、AI 和前端。
-
-### 常见启动问题
-
-- **页面可以打开但登录失败**：确认 NestJS 已启动、前端代理端口正确，并检查数据库连接配置；不要把数据库口令写入 README 或提交记录。
-- **AI 功能显示本地模式**：这是未配置商业模型时的预期行为，不代表 AI 服务未启动。
-- **找不到 `pwsh`**：安装 PowerShell 7 后重新打开终端；Windows 自带的 PowerShell 5.1 不等于 PowerShell 7。
-- **找不到脚本**：先执行日常启动的 `Set-Location`，进入含 `backend`、`frontend`、`ai-service`、`scripts` 的项目根目录。
-- **后端健康检查 timeout**：查看后端窗口，核对 MySQL 服务、端口、库名、口令和表结构。
-- **AI 健康检查 timeout**：查看 AI 窗口，确认 `.venv` 已创建并安装 `requirements.txt` 依赖。
-- **端口被占用**：确认占用者后处理；前端配置为固定 3000，端口占用会失败，不会自动切换。不要随意结束其他程序。
-- **真实数据库测试失败**：仅在授权隔离库复现并保留不含秘密的日志；不要连接生产库。
+| 问题 | 排查方法 |
+|---|---|
+| 找不到 `pwsh` | 安装 PowerShell 7，并重新打开终端。 |
+| 找不到脚本 | 在项目根目录执行相对路径命令，或使用实际脚本的完整路径；不要从其他目录直接执行 `.\scripts\...`。 |
+| `MES_DB_PASSWORD is not set` | 执行第 3 步的隐藏输入脚本，保存 MySQL 口令后重新启动。 |
+| 后端健康检查超时 | 核对 MySQL 服务、连接参数、口令和表结构，并查看后端窗口。 |
+| AI 健康检查超时 | 确认 `.venv` 已创建且已安装 `requirements.txt`。 |
+| 页面可打开但登录失败 | 核对后端与数据库状态；首次安装需完成管理员初始化。已有账号应使用原密码。 |
+| AI 显示本地模式 | 未配置商业模型时的预期行为。 |
+| 端口被占用 | 核对占用程序后处理。前端固定使用 3000，冲突时不会自动切换；不要随意结束其他程序。 |
 
 ## 验证命令
 
