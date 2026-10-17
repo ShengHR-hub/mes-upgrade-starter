@@ -107,20 +107,21 @@ function enterSkeletonPreview(): void {
         :model="form"
         :rules="rules"
         label-position="top"
-        autocomplete="off"
+        autocomplete="on"
         @submit.prevent="submit"
       >
         <el-form-item label="用户名" prop="username">
-          <el-input v-model="form.username" :prefix-icon="User" placeholder="请输入用户名" autocomplete="off" />
+          <el-input v-model="form.username" name="username" :prefix-icon="User" placeholder="请输入用户名" autocomplete="username" />
         </el-form-item>
         <el-form-item label="密码" prop="password">
           <el-input
             v-model="form.password"
             type="password"
+            name="password"
             show-password
             :prefix-icon="Lock"
             placeholder="请输入密码"
-            autocomplete="new-password"
+            autocomplete="current-password"
           />
         </el-form-item>
         <el-form-item>
